@@ -25,6 +25,12 @@ npm run build
 
 Platform owners can create reusable industry templates at `/admin/industry-templates`. A template contains issue categories, required support fields, default SOP types, severity rules and escalation behavior. Applying a template copies those defaults into a tenant, where authorized tenant administrators can customize them without changing the source template or another tenant.
 
+## Two-way ticket status synchronization
+
+Integration administrators configure provider polling at `/admin/ticket-sync` with an HTTPS endpoint and response status field path. Use `{externalId}` in the endpoint URL to place the provider ticket identifier in the path. Successful and failed pulls are recorded in tenant-scoped sync logs.
+
+Providers can push status changes to `POST /api/ticketing/status`. Send JSON containing `tenantId`, `externalTicketId`, and `status`, and set `x-support-signature` to the hexadecimal HMAC-SHA256 of the exact request body using `TICKETING_WEBHOOK_SECRET`. Incoming status changes update ticket metadata but never mark the support conversation resolved without user confirmation.
+
 ## Local development
 
 ## Getting Started

@@ -54,3 +54,7 @@ export function encryptSecret(value: unknown) {
 export function decryptSecret<T>(value: string): T {
   const [iv, tag, ciphertext] = value.split("."); if (!iv || !tag || !ciphertext) throw new Error("Encrypted integration credentials are invalid."); const decipher = createDecipheriv("aes-256-gcm", encryptionKey(), Buffer.from(iv, "base64url")); decipher.setAuthTag(Buffer.from(tag, "base64url")); return JSON.parse(Buffer.concat([decipher.update(Buffer.from(ciphertext, "base64url")), decipher.final()]).toString("utf8")) as T;
 }
+
+function webhookSecret() { const value = process.env.TICKETING_WEBHOOK_SECRET; if (!value && process.env.NODE_ENV === "production") throw new Error("TICKETING_WEBHOOK_SECRET must be configured in production."); return value ?? "development-only-change-webhook-secret"; }
+export function signTicketingWebhook(payload: string) { return createHmac("sha256", webhookSecret()).update(payload).digest("hex"); }
+export function verifyTicketingWebhook(payload: string, supplied: string | null) { if (!supplied) return false; const expected = Buffer.from(signTicketingWebhook(payload), "hex"); const actual = Buffer.from(supplied.replace(/^sha256=/, ""), "hex"); return expected.length === actual.length && timingSafeEqual(expected, actual); }
