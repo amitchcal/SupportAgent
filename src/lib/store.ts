@@ -2,12 +2,13 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { defaultBranding, defaultSettings, defaultTheme, type AuditLog, type Database, type Tenant, type User } from "./domain";
+import { mutatePostgresState, postgresConfigured, readPostgresState } from "./database";
 
 const dataDirectory = process.env.SUPPORT_AGENT_DATA_DIR ?? path.join(process.cwd(), "data");
 const databasePath = path.join(dataDirectory, "support-agent.json");
 let queue = Promise.resolve();
 
-function seed(): Database {
+export function seedDatabase(): Database {
   const now = new Date().toISOString();
   const tenantId = "tenant_demo";
   return {
@@ -18,13 +19,14 @@ function seed(): Database {
 }
 
 async function load(): Promise<Database> {
+  if (postgresConfigured()) return readPostgresState(seedDatabase);
   try {
     const database = JSON.parse(await readFile(databasePath, "utf8")) as Database;
     database.conversations ??= []; database.conversationMessages ??= []; database.conversationFeedback ??= []; database.knowledgeDocuments ??= []; database.knowledgeVersions ??= []; database.knowledgeGaps ??= []; database.sopDefinitions ??= []; database.sopExecutions ??= []; database.ticketingIntegrations ??= []; database.tickets ??= []; database.ticketSyncLogs ??= [];
     return database;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    const initial = seed();
+    const initial = seedDatabase();
     await persist(initial);
     return initial;
   }
@@ -40,6 +42,7 @@ async function persist(database: Database) {
 export async function readDatabase() { return load(); }
 
 export function mutateDatabase<T>(mutation: (database: Database) => T | Promise<T>): Promise<T> {
+  if (postgresConfigured()) return mutatePostgresState(mutation, seedDatabase);
   const operation = queue.then(async () => {
     const database = await load();
     const result = await mutation(database);
