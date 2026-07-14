@@ -47,7 +47,7 @@ const copy = {
 };
 
 export function responseFor(language: SupportedLanguage, input: { safetyReasons: string[]; confidence: number; threshold: number; clarificationCount: number; summary: string }) {
-  const languageCopy = copy[language];
+  const languageCopy = language in copy ? copy[language as keyof typeof copy] : copy.en;
   if (input.safetyReasons.length) return { content: languageCopy.safety(input.safetyReasons.join(", ")), status: "ESCALATED" as const, lowConfidenceReason: null };
   if (input.confidence < input.threshold) return input.clarificationCount > 0 ? { content: languageCopy.escalate, status: "ESCALATED" as const, lowConfidenceReason: `Classification confidence ${input.confidence.toFixed(2)} remained below tenant threshold ${input.threshold.toFixed(2)}.` } : { content: languageCopy.clarify, status: "AWAITING_CLARIFICATION" as const, lowConfidenceReason: `Classification confidence ${input.confidence.toFixed(2)} is below tenant threshold ${input.threshold.toFixed(2)}.` };
   return { content: languageCopy.confirm(input.summary), status: "AWAITING_CONFIRMATION" as const, lowConfidenceReason: null };

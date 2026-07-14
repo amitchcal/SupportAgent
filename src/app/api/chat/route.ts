@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { classifyIssue, detectSafetyRisk, extractIssueDetails, responseFor } from "@/lib/classification";
-import type { Conversation, SopStep, SupportedLanguage } from "@/lib/domain";
+import { supportedLanguages, type Conversation, type SopStep, type SupportedLanguage } from "@/lib/domain";
 import { findTenantBySlug, getTenantConversation, mutateDatabase, readDatabase } from "@/lib/store";
 import { advanceSopExecution, currentSopStep, findActiveSop, startSopExecution } from "@/lib/sop";
 import { createTicketFromConversation } from "@/lib/ticketing";
@@ -8,8 +8,9 @@ import { confirmResolution, recordFeedback } from "@/lib/closure";
 import { refreshKnowledgeGaps } from "@/lib/enterprise";
 import { anonymizedRateLimitKey, consumeRateLimit } from "@/lib/rate-limit";
 import { applyIndustryClassification } from "@/lib/industry";
+import { localizedMessage } from "@/lib/language";
 
-const languages = new Set<SupportedLanguage>(["en", "hi", "hinglish"]);
+const languages = new Set<SupportedLanguage>(supportedLanguages);
 const cleanRecord = (value: unknown) => Object.fromEntries(Object.entries(value && typeof value === "object" ? value : {}).map(([key, item]) => [key, String(item ?? "").trim().slice(0, 300)]));
 const ticketStatus = (ticket: { status: string } | null) => ticket?.status === "CREATED" ? "TICKET_CREATED" : "ESCALATED_WITHOUT_TICKET";
 const captureGaps = (tenantId: string) => mutateDatabase((database)=>refreshKnowledgeGaps(database,tenantId));
@@ -34,7 +35,8 @@ export async function POST(request: Request) {
     const result = responseFor(language, { safetyReasons, confidence: classification.confidence, threshold: tenant.settings.confidenceThreshold, clarificationCount: 0, summary: issue.summary });
     const now = new Date().toISOString(); const conversationId = randomUUID();
     const conversation: Conversation = { id: conversationId, tenantId: tenant.id, language, channel: body.channel === "VOICE" ? "VOICE" : "CHAT", contact, issue, classification, safetyReasons, lowConfidenceReason: result.lowConfidenceReason, clarificationCount: result.status === "AWAITING_CLARIFICATION" ? 1 : 0, status: result.status, createdAt: now, updatedAt: now };
-    await mutateDatabase((database) => { database.conversations.push(conversation); database.conversationMessages.push({ id: randomUUID(), tenantId: tenant.id, conversationId, role: "USER", content: message, createdAt: now }, { id: randomUUID(), tenantId: tenant.id, conversationId, role: "ASSISTANT", content: result.content, createdAt: now }); });
+    const userMessage=await localizedMessage({id:randomUUID(),tenantId:tenant.id,conversationId,role:"USER",content:message,createdAt:now},language);const assistantMessage=await localizedMessage({id:randomUUID(),tenantId:tenant.id,conversationId,role:"ASSISTANT",content:result.content,createdAt:now},language);
+    await mutateDatabase((database) => { database.conversations.push(conversation); database.conversationMessages.push(userMessage,assistantMessage); });
     const ticket = result.status === "ESCALATED" ? await createTicketFromConversation(tenant.id, conversationId) : null; if(result.lowConfidenceReason||ticket) await captureGaps(tenant.id);
     return Response.json({ conversationId, reply: result.content, status: ticket ? ticketStatus(ticket) : result.status, classification, issue, ticketReference: ticket?.reference, requestFeedback: Boolean(ticket) });
   }
@@ -78,7 +80,8 @@ export async function POST(request: Request) {
     const combined = `${current.issue.summary} ${message}`; const classification = applyIndustryClassification(classifyIssue(combined), combined, tenant.settings); const safetyReasons = detectSafetyRisk(combined); const issue = extractIssueDetails(combined, { ...current.contact, ...contact });
     const result = responseFor(current.language, { safetyReasons, confidence: classification.confidence, threshold: tenant.settings.confidenceThreshold, clarificationCount: current.clarificationCount, summary: issue.summary });
     const now = new Date().toISOString();
-    await mutateDatabase((database) => { const conversation = database.conversations.find((item) => item.id === conversationId && item.tenantId === tenant.id); if (!conversation) throw new Error("Conversation not found."); Object.assign(conversation, { contact: { ...conversation.contact, ...contact }, issue, classification, safetyReasons, lowConfidenceReason: result.lowConfidenceReason, clarificationCount: conversation.clarificationCount + (result.status === "AWAITING_CLARIFICATION" ? 1 : 0), status: result.status, updatedAt: now }); database.conversationMessages.push({ id: randomUUID(), tenantId: tenant.id, conversationId, role: "USER", content: message, createdAt: now }, { id: randomUUID(), tenantId: tenant.id, conversationId, role: "ASSISTANT", content: result.content, createdAt: now }); });
+    const userMessage=await localizedMessage({id:randomUUID(),tenantId:tenant.id,conversationId,role:"USER",content:message,createdAt:now},current.language);const assistantMessage=await localizedMessage({id:randomUUID(),tenantId:tenant.id,conversationId,role:"ASSISTANT",content:result.content,createdAt:now},current.language);
+    await mutateDatabase((database) => { const conversation = database.conversations.find((item) => item.id === conversationId && item.tenantId === tenant.id); if (!conversation) throw new Error("Conversation not found."); Object.assign(conversation, { contact: { ...conversation.contact, ...contact }, issue, classification, safetyReasons, lowConfidenceReason: result.lowConfidenceReason, clarificationCount: conversation.clarificationCount + (result.status === "AWAITING_CLARIFICATION" ? 1 : 0), status: result.status, updatedAt: now }); database.conversationMessages.push(userMessage,assistantMessage); });
     const ticket = result.status === "ESCALATED" ? await createTicketFromConversation(tenant.id, conversationId) : null; if(result.lowConfidenceReason||ticket) await captureGaps(tenant.id);
     return Response.json({ conversationId, reply: result.content, status: ticket ? ticketStatus(ticket) : result.status, classification, issue, ticketReference: ticket?.reference, requestFeedback: Boolean(ticket) });
   }

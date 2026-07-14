@@ -14,7 +14,7 @@ const labels = {
 
 export function ChatClient({ tenant }: { tenant: Tenant }) {
   const [language, setLanguage] = useState<SupportedLanguage>(tenant.settings.defaultLanguage);
-  const [conversationId, setConversationId] = useState(""); const [messages, setMessages] = useState<ChatMessage[]>([]); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [status, setStatus] = useState(""); const [feedbackRequested, setFeedbackRequested] = useState(false); const [feedbackSubmitted, setFeedbackSubmitted] = useState(false); const t = labels[language];
+  const [conversationId, setConversationId] = useState(""); const [messages, setMessages] = useState<ChatMessage[]>([]); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [status, setStatus] = useState(""); const [feedbackRequested, setFeedbackRequested] = useState(false); const [feedbackSubmitted, setFeedbackSubmitted] = useState(false); const t = language in labels ? labels[language as keyof typeof labels] : labels.en;
 
   async function send(body: Record<string, unknown>) {
     setBusy(true); setError("");

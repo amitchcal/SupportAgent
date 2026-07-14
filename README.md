@@ -75,3 +75,6 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### C4 full language expansion
+
+Tenants can enable English, Hindi, Hinglish, German, French, Spanish, Chinese/Mandarin, and Japanese at `/admin/languages`. The language adapter stores original and English-translated content separately, protects technical identifiers, and supplies bilingual ticket summaries. Configure `TRANSLATION_API_URL` and optional `TRANSLATION_API_KEY` in Vercel for production free-form translation. The endpoint must accept `{ text, source, target, preservedTerms }` and return `{ translation }` or `{ translatedText }`.

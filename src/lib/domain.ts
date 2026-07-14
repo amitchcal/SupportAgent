@@ -42,8 +42,8 @@ export type TenantTheme = {
 
 export type TenantSettings = {
   timezone: string;
-  defaultLanguage: "en" | "hi" | "hinglish";
-  enabledLanguages: Array<"en" | "hi" | "hinglish">;
+  defaultLanguage: SupportedLanguage;
+  enabledLanguages: SupportedLanguage[];
   businessHours: Record<string, { open: string; close: string; closed?: boolean }>;
   requiredSupportFields: string[];
   escalationBehavior: "always" | "outside-hours" | "safety-and-low-confidence";
@@ -92,13 +92,14 @@ export type AuditLog = {
   createdAt: string;
 };
 
-export type SupportedLanguage = "en" | "hi" | "hinglish";
+export const supportedLanguages = ["en", "hi", "hinglish", "de", "fr", "es", "zh", "ja"] as const;
+export type SupportedLanguage = (typeof supportedLanguages)[number];
 export type IssueCategory = "Mechanical" | "Electrical" | "Instrumentation" | "PLC/Automation" | "Hydraulic" | "Pneumatic" | "Calibration" | "Installation" | "Warranty" | "Spare Parts" | "Documentation" | "Preventive Maintenance" | "Safety" | "Other";
 export type Classification = { category: IssueCategory; severity: "low" | "medium" | "high" | "critical"; urgency: "routine" | "soon" | "urgent" | "immediate"; confidence: number };
 export type IssueDetails = { summary: string; asset: string; model: string; serialNumber: string; errorCode: string; site: string; severityClues: string[]; missingQuestions: string[] };
 export type ConversationStatus = "AWAITING_CLARIFICATION" | "AWAITING_CONFIRMATION" | "SOP_IN_PROGRESS" | "AWAITING_RESOLUTION_CONFIRMATION" | "RESOLVED" | "ESCALATED" | "TICKET_CREATED" | "ABANDONED" | "FAILED" | "ESCALATED_WITHOUT_TICKET";
 export type Conversation = { id: string; tenantId: string; language: SupportedLanguage; channel?: "CHAT" | "VOICE"; contact: Record<string, string>; issue: IssueDetails; classification: Classification; safetyReasons: string[]; lowConfidenceReason: string | null; clarificationCount: number; status: ConversationStatus; createdAt: string; updatedAt: string; closedAt?: string | null };
-export type ConversationMessage = { id: string; tenantId: string; conversationId: string; role: "USER" | "ASSISTANT" | "SYSTEM"; content: string; createdAt: string };
+export type ConversationMessage = { id: string; tenantId: string; conversationId: string; role: "USER" | "ASSISTANT" | "SYSTEM"; content: string; originalContent?: string; translatedContent?: string; originalLanguage?: SupportedLanguage; translatedLanguage?: SupportedLanguage; preservedTerms?: string[]; createdAt: string };
 export type ConversationFeedback = { id: string; tenantId: string; conversationId: string; ticketId: string | null; rating: 1 | 2 | 3 | 4 | 5; comment: string; negativeFlag: boolean; createdAt: string };
 export type KnowledgeStatus = "DRAFT" | "ACTIVE" | "ARCHIVED" | "REJECTED";
 export type KnowledgeDocument = { id: string; tenantId: string; title: string; description: string; tags: string[]; status: KnowledgeStatus; currentVersionId: string | null; sourceTicketId?: string | null; createdBy: string; createdAt: string; updatedAt: string };
@@ -110,7 +111,7 @@ export type SopDefinition = { id: string; tenantId: string; title: string; categ
 export type SopExecutionLog = { stepId: string | null; event: "STARTED" | "STEP_CONFIRMED" | "SAFETY_BLOCKED" | "ESCALATED" | "RESOLVED"; response: string; createdAt: string };
 export type SopExecution = { id: string; tenantId: string; conversationId: string; sopId: string; currentStepId: string | null; status: "IN_PROGRESS" | "RESOLVED" | "ESCALATED"; completedStepIds: string[]; logs: SopExecutionLog[]; createdAt: string; updatedAt: string };
 export type TicketAttachment = { name: string; url: string; contentType: string };
-export type NormalizedTicketPayload = { schemaVersion: "1.0"; tenantId: string; conversationId: string; requester: Record<string, string>; asset: { id: string; model: string; serialNumber: string; site: string }; issue: { summary: string; category: IssueCategory; severity: Classification["severity"]; urgency: Classification["urgency"]; errorCode: string; safetyReasons: string[] }; troubleshooting: Array<{ step: string; response: string; outcome: string; timestamp: string }>; attachments: TicketAttachment[]; transcript: Array<{ role: ConversationMessage["role"]; content: string; timestamp: string }> };
+export type NormalizedTicketPayload = { schemaVersion: "1.0"; tenantId: string; conversationId: string; requester: Record<string, string>; asset: { id: string; model: string; serialNumber: string; site: string }; issue: { summary: string; summaryEnglish?: string; summaryOriginal?: string; originalLanguage?: SupportedLanguage; category: IssueCategory; severity: Classification["severity"]; urgency: Classification["urgency"]; errorCode: string; safetyReasons: string[] }; troubleshooting: Array<{ step: string; response: string; outcome: string; timestamp: string }>; attachments: TicketAttachment[]; transcript: Array<{ role: ConversationMessage["role"]; content: string; originalContent?: string; translatedContent?: string; timestamp: string }> };
 export type TicketingIntegration = { id: string; tenantId: string; type: "CUSTOM_WEBHOOK" | "SERVICENOW"; name: string; endpointUrl: string; statusEndpointUrl?: string | null; statusFieldPath?: string | null; headers: Record<string, string>; authType: "NONE" | "BEARER" | "BASIC"; authConfigEncrypted: string; fieldMapping: Record<string, string>; isActive: boolean; lastTestedAt: string | null; lastTestStatus: "SUCCESS" | "FAILED" | null; createdBy: string; createdAt: string; updatedAt: string };
 export type Ticket = { id: string; reference: string; tenantId: string; conversationId: string; integrationId: string | null; status: "PENDING_CREATION" | "CREATED" | "CREATION_FAILED" | "DEAD_LETTER"; externalTicketId: string | null; externalTicketUrl: string | null; externalStatus?: string | null; lastStatusSyncedAt?: string | null; normalizedPayload: NormalizedTicketPayload; creationAttempts: number; lastError: string | null; createdAt: string; updatedAt: string };
 export type TicketSyncLog = { id: string; tenantId: string; ticketId: string | null; integrationId: string | null; action: "TEST" | "CREATE" | "STATUS_PULL" | "STATUS_WEBHOOK"; requestPayload: unknown; responsePayload: unknown; status: "SUCCESS" | "FAILED"; errorMessage: string | null; createdAt: string };
