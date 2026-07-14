@@ -4,6 +4,7 @@ const hex = /^#[0-9a-f]{6}$/i;
 const modes = new Set(["light", "dark", "system"]);
 const radii = new Set(["none", "small", "medium", "large", "rounded"]);
 const fonts = new Set(["Inter", "Arial", "Georgia", "system-ui"]);
+export function validateThemeColors(values:unknown[]){if(values.some(value=>typeof value!=="string"||!hex.test(value)))throw new Error("Theme colors must use six-digit hexadecimal values.");return true;}
 
 export function sanitizeTheme(value: Partial<TenantTheme> | null | undefined): TenantTheme {
   const color = (candidate: unknown, fallback: string) => typeof candidate === "string" && hex.test(candidate) ? candidate : fallback;

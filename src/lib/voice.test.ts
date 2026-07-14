@@ -1,0 +1,3 @@
+import assert from "node:assert/strict";import test from "node:test";import { transcriptionDecision,voiceLocales } from "./voice";
+test("English voice is enabled and the architecture maps Hindi and Hinglish locales",()=>{assert.equal(voiceLocales.en,"en-IN");assert.equal(voiceLocales.hi,"hi-IN");assert.equal(voiceLocales.hinglish,"hi-IN");});
+test("low transcription confidence asks the user to repeat",()=>{assert.equal(transcriptionDecision(.59,"en").accepted,false);assert.match(transcriptionDecision(.59,"en").message??"",/repeat/i);assert.equal(transcriptionDecision(.8,"en").accepted,true);});

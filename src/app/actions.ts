@@ -9,10 +9,11 @@ import { getCurrentUser, requireUser, SESSION_COOKIE } from "@/lib/auth";
 import { assertCan, scopeTenant } from "@/lib/rbac";
 import { createSessionToken, encryptSecret, hashPassword, verifyPassword } from "@/lib/security";
 import { audit, createTenantRecord, findUserByEmail, mutateDatabase, readDatabase } from "@/lib/store";
-import { sanitizeTheme } from "@/lib/theme";
+import { sanitizeTheme, validateThemeColors } from "@/lib/theme";
 import { persistKnowledgeFile } from "@/lib/knowledge";
 import { validateSopSteps } from "@/lib/sop";
-import { CustomWebhookAdapter } from "@/lib/ticketing";
+import { CustomWebhookAdapter, ServiceNowAdapter, retryFailedTicket } from "@/lib/ticketing";
+import { reviewKnowledgeGap } from "@/lib/enterprise";
 
 const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 
@@ -90,6 +91,7 @@ export async function updateTheme(form: FormData) {
   const actor = await requireUser();
   assertCan(actor.role, "settings:manage");
   const tenantId = scopeTenant(actor.role, actor.tenantId, text(form, "tenantId") || undefined);
+  const colorValues = ["primary","secondary","accent","background","surface","text","mutedText","border"].map((key)=>text(form,key)); validateThemeColors(colorValues);
   const theme = sanitizeTheme({ mode: text(form, "mode") as ThemeMode, primary: text(form, "primary"), secondary: text(form, "secondary"), accent: text(form, "accent"), background: text(form, "background"), surface: text(form, "surface"), text: text(form, "text"), mutedText: text(form, "mutedText"), border: text(form, "border"), radius: text(form, "radius") as BorderRadius, fontFamily: text(form, "fontFamily") as TenantTheme["fontFamily"] });
   await mutateDatabase((database) => {
     const tenant = database.tenants.find((item) => item.id === tenantId);
@@ -172,6 +174,11 @@ export async function activateSop(form: FormData) {
 }
 
 function jsonObject(value: string, label: string) { try { const parsed = value ? JSON.parse(value) : {}; if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error(); return parsed as Record<string, string>; } catch { throw new Error(`${label} must be a valid JSON object.`); } }
+
+export async function saveServiceNowIntegration(form:FormData){ const actor=await requireUser(); assertCan(actor.role,"integrations:manage"); const tenantId=scopeTenant(actor.role,actor.tenantId,text(form,"tenantId")||undefined); const endpointUrl=text(form,"endpointUrl"); if(new URL(endpointUrl).protocol!=="https:")throw new Error("ServiceNow endpoint must use HTTPS."); const now=new Date().toISOString(); await mutateDatabase(database=>{database.ticketingIntegrations.filter(item=>item.tenantId===tenantId).forEach(item=>item.isActive=false); const integration={id:randomUUID(),tenantId,type:"SERVICENOW" as const,name:text(form,"name")||"ServiceNow",endpointUrl,headers:{},authType:"BASIC" as const,authConfigEncrypted:encryptSecret({username:text(form,"username"),password:text(form,"password")}),fieldMapping:jsonObject(text(form,"fieldMapping"),"Field mapping"),isActive:true,lastTestedAt:null,lastTestStatus:null,createdBy:actor.id,createdAt:now,updatedAt:now}; database.ticketingIntegrations.push(integration); audit(database,{tenantId,actorUserId:actor.id,action:"ticketing.servicenow.updated",entityType:"ticketing_integration",entityId:integration.id,oldValue:null,newValue:{...integration,authConfigEncrypted:"[REDACTED]"}});}); revalidatePath("/admin"); }
+export async function testServiceNowIntegration(form:FormData){ const actor=await requireUser(); assertCan(actor.role,"integrations:manage"); const integrationId=text(form,"integrationId"); const database=await readDatabase(); const integration=database.ticketingIntegrations.find(item=>item.id===integrationId&&item.type==="SERVICENOW"); if(!integration)throw new Error("ServiceNow integration not found."); scopeTenant(actor.role,actor.tenantId,integration.tenantId); await new ServiceNowAdapter(integration).test(); await mutateDatabase(current=>{const stored=current.ticketingIntegrations.find(item=>item.id===integrationId);if(stored){stored.lastTestStatus="SUCCESS";stored.lastTestedAt=new Date().toISOString();}}); revalidatePath("/admin"); }
+export async function retryTicket(form:FormData){ const actor=await requireUser(); assertCan(actor.role,"integrations:manage"); const ticketId=text(form,"ticketId"); const database=await readDatabase(); const ticket=database.tickets.find(item=>item.id===ticketId); if(!ticket)throw new Error("Ticket not found."); const tenantId=scopeTenant(actor.role,actor.tenantId,ticket.tenantId); await retryFailedTicket(tenantId,ticketId); await mutateDatabase(current=>audit(current,{tenantId,actorUserId:actor.id,action:"ticket.retry.requested",entityType:"ticket",entityId:ticketId,oldValue:null,newValue:{attempt:ticket.creationAttempts+1}})); revalidatePath("/admin"); }
+export async function markKnowledgeGapReviewed(form:FormData){ const actor=await requireUser(); assertCan(actor.role,"knowledge:manage"); const gapId=text(form,"gapId"); const database=await readDatabase(); const gap=(database.knowledgeGaps??[]).find(item=>item.id===gapId); if(!gap)throw new Error("Knowledge gap not found."); const tenantId=scopeTenant(actor.role,actor.tenantId,gap.tenantId); await mutateDatabase(current=>{reviewKnowledgeGap(current,tenantId,gapId,actor.id);audit(current,{tenantId,actorUserId:actor.id,action:"knowledge_gap.reviewed",entityType:"knowledge_gap",entityId:gapId,oldValue:{status:"OPEN"},newValue:{status:"REVIEWED"}});}); revalidatePath("/admin"); }
 
 export async function saveWebhookIntegration(form: FormData) {
   const actor = await requireUser(); assertCan(actor.role, "integrations:manage"); const tenantId = scopeTenant(actor.role, actor.tenantId, text(form, "tenantId") || undefined); const endpointUrl = text(form, "endpointUrl"); const url = new URL(endpointUrl); if (url.protocol !== "https:") throw new Error("Webhook endpoint must use HTTPS."); const headers = jsonObject(text(form, "headers"), "Headers"); const fieldMapping = jsonObject(text(form, "fieldMapping"), "Field mapping"); const authType = text(form, "authType") as "NONE" | "BEARER" | "BASIC"; if (!(["NONE","BEARER","BASIC"] as string[]).includes(authType)) throw new Error("Unsupported authentication type."); const auth = authType === "BEARER" ? { token: text(form, "token") } : authType === "BASIC" ? { username: text(form, "username"), password: text(form, "password") } : {}; const now = new Date().toISOString();

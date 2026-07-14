@@ -13,14 +13,14 @@ function seed(): Database {
   return {
     tenants: [{ id: tenantId, name: "Acme Industrial", slug: "acme", status: "ACTIVE", settings: defaultSettings, branding: defaultBranding, theme: defaultTheme, createdAt: now, updatedAt: now }],
     users: [],
-    auditLogs: [], conversations: [], conversationMessages: [], conversationFeedback: [], knowledgeDocuments: [], knowledgeVersions: [], sopDefinitions: [], sopExecutions: [], ticketingIntegrations: [], tickets: [], ticketSyncLogs: [],
+    auditLogs: [], conversations: [], conversationMessages: [], conversationFeedback: [], knowledgeDocuments: [], knowledgeVersions: [], knowledgeGaps: [], sopDefinitions: [], sopExecutions: [], ticketingIntegrations: [], tickets: [], ticketSyncLogs: [],
   };
 }
 
 async function load(): Promise<Database> {
   try {
     const database = JSON.parse(await readFile(databasePath, "utf8")) as Database;
-    database.conversations ??= []; database.conversationMessages ??= []; database.conversationFeedback ??= []; database.knowledgeDocuments ??= []; database.knowledgeVersions ??= []; database.sopDefinitions ??= []; database.sopExecutions ??= []; database.ticketingIntegrations ??= []; database.tickets ??= []; database.ticketSyncLogs ??= [];
+    database.conversations ??= []; database.conversationMessages ??= []; database.conversationFeedback ??= []; database.knowledgeDocuments ??= []; database.knowledgeVersions ??= []; database.knowledgeGaps ??= []; database.sopDefinitions ??= []; database.sopExecutions ??= []; database.ticketingIntegrations ??= []; database.tickets ??= []; database.ticketSyncLogs ??= [];
     return database;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
