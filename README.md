@@ -35,6 +35,10 @@ Providers can push status changes to `POST /api/ticketing/status`. Send JSON con
 
 When an external ticket reaches a resolved, closed, completed, done or fixed status, the application creates one tenant-scoped KB candidate. Knowledge Managers review candidates at `/admin/kb-candidates`. Converting a candidate creates a source-linked draft document that is still excluded from live retrieval until its version is separately approved through the existing knowledge lifecycle. Candidate content excludes requester details and raw conversation transcripts.
 
+## Voice transcript review
+
+Authorized supervisors and administrators review tenant-scoped voice conversations at `/admin/voice-transcripts`, with issue/contact search, status and date filters, and complete linked messages. Basic masking hides email addresses and telephone numbers by default. Tenant administrators can configure whether future audio capture is prohibited or allowed only with explicit consent. The current browser voice flow stores transcripts only and does not record audio.
+
 ## Local development
 
 ## Getting Started

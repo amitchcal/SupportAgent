@@ -52,6 +52,8 @@ export type TenantSettings = {
   issueCategories?: IssueCategory[];
   defaultSopTypes?: string[];
   severityRules?: Record<string, "low" | "medium" | "high" | "critical">;
+  voiceAudioRecordingPolicy?: "NEVER" | "WITH_EXPLICIT_CONSENT";
+  voiceTranscriptMasking?: "NONE" | "BASIC";
 };
 
 export type Tenant = {
@@ -163,4 +165,6 @@ export const defaultSettings: TenantSettings = {
   requiredSupportFields: ["name", "email", "equipmentId"],
   escalationBehavior: "safety-and-low-confidence",
   confidenceThreshold: 0.72,
+  voiceAudioRecordingPolicy: "NEVER",
+  voiceTranscriptMasking: "BASIC",
 };
