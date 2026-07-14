@@ -110,7 +110,8 @@ export type Ticket = { id: string; reference: string; tenantId: string; conversa
 export type TicketSyncLog = { id: string; tenantId: string; ticketId: string | null; integrationId: string | null; action: "TEST" | "CREATE"; requestPayload: unknown; responsePayload: unknown; status: "SUCCESS" | "FAILED"; errorMessage: string | null; createdAt: string };
 export type KnowledgeGap = { id: string; tenantId: string; category: IssueCategory; normalizedSummary: string; conversationIds: string[]; reasons: string[]; status: "OPEN" | "REVIEWED"; reviewedBy: string | null; createdAt: string; updatedAt: string };
 
-export type Database = { tenants: Tenant[]; users: User[]; auditLogs: AuditLog[]; conversations: Conversation[]; conversationMessages: ConversationMessage[]; conversationFeedback: ConversationFeedback[]; knowledgeDocuments: KnowledgeDocument[]; knowledgeVersions: KnowledgeVersion[]; knowledgeGaps?: KnowledgeGap[]; sopDefinitions: SopDefinition[]; sopExecutions: SopExecution[]; ticketingIntegrations: TicketingIntegration[]; tickets: Ticket[]; ticketSyncLogs: TicketSyncLog[] };
+export type RateLimitEntry = { key: string; count: number; windowStartedAt: string };
+export type Database = { tenants: Tenant[]; users: User[]; auditLogs: AuditLog[]; conversations: Conversation[]; conversationMessages: ConversationMessage[]; conversationFeedback: ConversationFeedback[]; knowledgeDocuments: KnowledgeDocument[]; knowledgeVersions: KnowledgeVersion[]; knowledgeGaps?: KnowledgeGap[]; rateLimits?: RateLimitEntry[]; sopDefinitions: SopDefinition[]; sopExecutions: SopExecution[]; ticketingIntegrations: TicketingIntegration[]; tickets: Ticket[]; ticketSyncLogs: TicketSyncLog[] };
 
 export const defaultTheme: TenantTheme = {
   mode: "light",

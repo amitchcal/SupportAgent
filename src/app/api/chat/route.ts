@@ -6,6 +6,7 @@ import { advanceSopExecution, currentSopStep, findActiveSop, startSopExecution }
 import { createTicketFromConversation } from "@/lib/ticketing";
 import { confirmResolution, recordFeedback } from "@/lib/closure";
 import { refreshKnowledgeGaps } from "@/lib/enterprise";
+import { anonymizedRateLimitKey, consumeRateLimit } from "@/lib/rate-limit";
 
 const languages = new Set<SupportedLanguage>(["en", "hi", "hinglish"]);
 const cleanRecord = (value: unknown) => Object.fromEntries(Object.entries(value && typeof value === "object" ? value : {}).map(([key, item]) => [key, String(item ?? "").trim().slice(0, 300)]));
@@ -17,6 +18,9 @@ export async function POST(request: Request) {
   try { body = await request.json() as Record<string, unknown>; } catch { return Response.json({ error: "Invalid JSON body." }, { status: 400 }); }
   const tenantSlug = String(body.tenantSlug ?? "").trim(); const tenant = await findTenantBySlug(tenantSlug);
   if (!tenant) return Response.json({ error: "Support portal not found." }, { status: 404 });
+  const address = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "unknown";
+  const limit = await consumeRateLimit(anonymizedRateLimitKey("chat", `${address}:${tenant.id}`), 60, 5 * 60);
+  if (!limit.allowed) return Response.json({ error: "Too many support requests. Please wait and try again." }, { status: 429, headers: { "retry-after": String(limit.retryAfterSeconds) } });
   const language = String(body.language ?? tenant.settings.defaultLanguage) as SupportedLanguage;
   if (!languages.has(language) || !tenant.settings.enabledLanguages.includes(language)) return Response.json({ error: "Language is not enabled for this tenant." }, { status: 400 });
   const action = String(body.action ?? ""); const contact = cleanRecord(body.contact); const message = String(body.message ?? "").trim().slice(0, 4000);

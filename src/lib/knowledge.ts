@@ -4,6 +4,7 @@ import path from "node:path";
 import type { Database, KnowledgeVersion } from "./domain";
 
 const allowedTypes = new Set<KnowledgeVersion["fileType"]>(["pdf", "docx", "txt", "md", "html"]);
+const contentTypes: Record<KnowledgeVersion["fileType"], string> = { pdf: "application/pdf", docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", txt: "text/plain", md: "text/markdown", html: "text/html" };
 
 export function fileType(fileName: string) {
   const extension = path.extname(fileName).slice(1).toLowerCase() as KnowledgeVersion["fileType"];
@@ -17,12 +18,48 @@ export function chunkText(text: string, maximum = 900) {
   return chunks;
 }
 
+export async function extractDocumentText(type: KnowledgeVersion["fileType"], bytes: Buffer) {
+  if (type === "txt" || type === "md" || type === "html") return bytes.toString("utf8");
+  if (type === "docx") {
+    const mammoth = await import("mammoth");
+    return (await mammoth.extractRawText({ buffer: bytes })).value;
+  }
+  const { PDFParse } = await import("pdf-parse");
+  const parser = new PDFParse({ data: bytes });
+  try { return (await parser.getText()).text; } finally { await parser.destroy(); }
+}
+
+function storageConfiguration() {
+  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const bucket = process.env.SUPABASE_STORAGE_BUCKET ?? "support-documents";
+  if (url && serviceKey) return { url: url.replace(/\/$/, ""), serviceKey, bucket };
+  if (process.env.NODE_ENV === "production") throw new Error("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be configured for document storage in production.");
+  return null;
+}
+
+async function storeBytes(objectPath: string, type: KnowledgeVersion["fileType"], bytes: Buffer) {
+  const configuration = storageConfiguration();
+  if (configuration) {
+    const encodedPath = objectPath.split("/").map(encodeURIComponent).join("/");
+    const body = new Uint8Array(bytes.byteLength); body.set(bytes);
+    const response = await fetch(`${configuration.url}/storage/v1/object/${encodeURIComponent(configuration.bucket)}/${encodedPath}`, { method: "POST", headers: { apikey: configuration.serviceKey, authorization: `Bearer ${configuration.serviceKey}`, "content-type": contentTypes[type], "x-upsert": "false" }, body });
+    if (!response.ok) throw new Error(`Supabase Storage upload failed with HTTP ${response.status}.`);
+    return `${configuration.bucket}/${objectPath}`;
+  }
+  const storagePath = path.join(process.env.SUPPORT_AGENT_DATA_DIR ?? path.join(process.cwd(), "data"), "uploads", objectPath);
+  await mkdir(path.dirname(storagePath), { recursive: true });
+  await writeFile(storagePath, bytes);
+  return storagePath;
+}
+
 export async function persistKnowledgeFile(tenantId: string, documentId: string, file: File) {
   if (file.size === 0 || file.size > 5 * 1024 * 1024) throw new Error("File must be between 1 byte and 5 MB.");
   const type = fileType(file.name); const bytes = Buffer.from(await file.arrayBuffer()); const checksum = createHash("sha256").update(bytes).digest("hex");
-  const directory = path.join(process.env.SUPPORT_AGENT_DATA_DIR ?? path.join(process.cwd(), "data"), "uploads", tenantId, documentId); await mkdir(directory, { recursive: true });
-  const storedName = `${randomUUID()}.${type}`; const storagePath = path.join(directory, storedName); await writeFile(storagePath, bytes);
-  const chunks = type === "txt" || type === "md" || type === "html" ? chunkText(bytes.toString("utf8")) : [];
+  const objectPath = `${tenantId}/${documentId}/${randomUUID()}.${type}`;
+  const text = await extractDocumentText(type, bytes);
+  const storagePath = await storeBytes(objectPath, type, bytes);
+  const chunks = chunkText(text);
   return { type, checksum, storagePath, chunks };
 }
 

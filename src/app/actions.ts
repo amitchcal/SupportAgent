@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import type { BorderRadius, IssueCategory, Role, SupportedLanguage, TenantTheme, ThemeMode } from "@/lib/domain";
@@ -14,14 +14,21 @@ import { persistKnowledgeFile } from "@/lib/knowledge";
 import { validateSopSteps } from "@/lib/sop";
 import { CustomWebhookAdapter, ServiceNowAdapter, retryFailedTicket } from "@/lib/ticketing";
 import { reviewKnowledgeGap } from "@/lib/enterprise";
+import { anonymizedRateLimitKey, clearRateLimit, consumeRateLimit } from "@/lib/rate-limit";
 
 const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 
 export async function login(form: FormData) {
   const email = text(form, "email").toLowerCase();
   const password = text(form, "password");
+  const requestHeaders = await headers();
+  const address = requestHeaders.get("x-forwarded-for")?.split(",")[0]?.trim() || requestHeaders.get("x-real-ip") || "unknown";
+  const rateKey = anonymizedRateLimitKey("login", `${address}:${email}`);
+  const limit = await consumeRateLimit(rateKey, 5, 15 * 60);
+  if (!limit.allowed) redirect(`/login?error=rate&retry=${limit.retryAfterSeconds}`);
   const user = await findUserByEmail(email);
   if (!user || user.status !== "ACTIVE" || !verifyPassword(password, user.passwordHash)) redirect("/login?error=invalid");
+  await clearRateLimit(rateKey);
   (await cookies()).set(SESSION_COOKIE, createSessionToken(user.id), { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 8 });
   redirect("/admin");
 }

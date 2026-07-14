@@ -30,4 +30,5 @@ test("webhook adapter maps fields and keeps credentials encrypted", async () => 
 test("webhook endpoints must use HTTPS", () => {
   const integration = { id: "i1", tenantId: "t1", type: "CUSTOM_WEBHOOK", name: "Bad", endpointUrl: "http://internal.local", headers: {}, authType: "NONE", authConfigEncrypted: encryptSecret({}), fieldMapping: {}, isActive: true, lastTestedAt: null, lastTestStatus: null, createdBy: "u1", createdAt: now, updatedAt: now } satisfies TicketingIntegration;
   assert.throws(() => new CustomWebhookAdapter(integration), /HTTPS/);
+  assert.throws(() => new CustomWebhookAdapter({ ...integration, endpointUrl: "https://192.168.1.20/hook" }), /private/);
 });

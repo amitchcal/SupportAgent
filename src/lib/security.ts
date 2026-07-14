@@ -18,6 +18,7 @@ export function verifyPassword(password: string, stored: string) {
 export type SessionClaims = { userId: string; expiresAt: number };
 
 function secret() {
+  if (!process.env.SESSION_SECRET && process.env.NODE_ENV === "production") throw new Error("SESSION_SECRET must be configured in production.");
   return process.env.SESSION_SECRET ?? "development-only-change-this-session-secret";
 }
 

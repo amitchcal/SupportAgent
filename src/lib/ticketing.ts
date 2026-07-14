@@ -1,4 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { isIP } from "node:net";
 import type { Database, NormalizedTicketPayload, Ticket, TicketingIntegration } from "./domain";
 import { decryptSecret } from "./security";
 import { mutateDatabase, readDatabase } from "./store";
@@ -8,8 +9,25 @@ export interface TicketingAdapter { test(): Promise<TicketCreationResult>; creat
 export function deliverTicket(adapter: TicketingAdapter, payload: NormalizedTicketPayload) { return adapter.createTicket(payload); }
 type WebhookAuth = { token?: string; username?: string; password?: string };
 
+export function isPrivateNetworkAddress(address: string) {
+  const normalized = address.toLowerCase().replace(/^::ffff:/, "");
+  if (normalized === "::1" || normalized === "0:0:0:0:0:0:0:1" || normalized.startsWith("fc") || normalized.startsWith("fd") || /^fe[89ab]/.test(normalized)) return true;
+  const parts = normalized.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  const [a, b] = parts;
+  return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || a >= 224;
+}
+
+export function validateOutboundEndpoint(endpoint: string) {
+  const url = new URL(endpoint);
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (url.protocol !== "https:") throw new Error("Ticketing endpoint must use HTTPS.");
+  if (hostname === "localhost" || hostname.endsWith(".local") || hostname.endsWith(".internal") || (isIP(hostname) > 0 && isPrivateNetworkAddress(hostname))) throw new Error("Ticketing endpoint cannot target a private or local network.");
+  return url;
+}
+
 export class ServiceNowAdapter implements TicketingAdapter {
-  constructor(private integration: TicketingIntegration, private fetcher: typeof fetch = fetch) { if (new URL(integration.endpointUrl).protocol !== "https:") throw new Error("ServiceNow endpoint must use HTTPS."); }
+  constructor(private integration: TicketingIntegration, private fetcher: typeof fetch = fetch) { validateOutboundEndpoint(integration.endpointUrl); }
   private async send(payload: NormalizedTicketPayload | { short_description: string }) { const auth = decryptSecret<WebhookAuth>(this.integration.authConfigEncrypted); const mapped = "schemaVersion" in payload ? mapTicketPayload(payload, this.integration.fieldMapping) : payload; const response = await this.fetcher(this.integration.endpointUrl, { method: "POST", headers: { "content-type": "application/json", accept: "application/json", ...this.integration.headers, ...(auth.username ? { authorization: `Basic ${Buffer.from(`${auth.username}:${auth.password ?? ""}`).toString("base64")}` } : {}) }, body: JSON.stringify(mapped), signal: AbortSignal.timeout(10_000) }); const raw = await response.json() as { result?: { sys_id?: string; number?: string; link?: string } }; if (!response.ok) throw new Error(`ServiceNow returned HTTP ${response.status}.`); const result = raw.result ?? {}; return { externalTicketId: result.number ?? result.sys_id ?? "UNKNOWN", externalTicketUrl: result.link ?? null, raw }; }
   test() { return this.send({ short_description: "ResolveOps connection test" }); }
   createTicket(payload: NormalizedTicketPayload) { return this.send(payload); }
@@ -20,7 +38,7 @@ function valueAtPath(value: unknown, path: string): unknown { return path.split(
 export function mapTicketPayload(payload: NormalizedTicketPayload, mapping: Record<string, string>) { return Object.keys(mapping).length ? Object.fromEntries(Object.entries(mapping).map(([target, source]) => [target, valueAtPath(payload, source)])) : payload; }
 
 export class CustomWebhookAdapter implements TicketingAdapter {
-  constructor(private integration: TicketingIntegration, private fetcher: typeof fetch = fetch) { const url = new URL(integration.endpointUrl); if (url.protocol !== "https:") throw new Error("Webhook endpoint must use HTTPS."); }
+  constructor(private integration: TicketingIntegration, private fetcher: typeof fetch = fetch) { validateOutboundEndpoint(integration.endpointUrl); }
   private headers() { const headers: Record<string, string> = { "content-type": "application/json", ...this.integration.headers }; const auth = this.integration.authConfigEncrypted ? decryptSecret<WebhookAuth>(this.integration.authConfigEncrypted) : {}; if (this.integration.authType === "BEARER" && auth.token) headers.authorization = `Bearer ${auth.token}`; if (this.integration.authType === "BASIC" && auth.username) headers.authorization = `Basic ${Buffer.from(`${auth.username}:${auth.password ?? ""}`).toString("base64")}`; return headers; }
   private async send(payload: unknown) { const response = await this.fetcher(this.integration.endpointUrl, { method: "POST", headers: this.headers(), body: JSON.stringify(payload), signal: AbortSignal.timeout(10_000) }); const text = await response.text(); let raw: unknown = text; try { raw = text ? JSON.parse(text) : {}; } catch { /* keep text response */ } if (!response.ok) throw new Error(`Webhook returned HTTP ${response.status}.`); const record = raw && typeof raw === "object" ? raw as Record<string, unknown> : {}; return { externalTicketId: String(record.id ?? record.ticketId ?? record.reference ?? `WEB-${Date.now()}`), externalTicketUrl: typeof record.url === "string" ? record.url : null, raw }; }
   test() { return this.send({ event: "ticketing.test", sentAt: new Date().toISOString() }); }

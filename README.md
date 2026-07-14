@@ -1,4 +1,25 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ResolveOps Support Agent
+
+A multi-tenant L0 support application backed by Supabase PostgreSQL and Supabase Storage.
+
+## Production configuration
+
+Copy `.env.example` to `.env.local` for local development and configure the same values in Vercel. `SUPABASE_SERVICE_ROLE_KEY`, `SESSION_SECRET`, `TICKETING_SECRET`, `DATABASE_URL`, and `DIRECT_URL` are server-only secrets and must never use a `NEXT_PUBLIC_` prefix.
+
+Create a **private** Supabase Storage bucket named `support-documents` (or set `SUPABASE_STORAGE_BUCKET` to another private bucket). Uploaded knowledge documents are stored at tenant-scoped object paths. The service-role key is used only by server actions; browsers never receive it.
+
+Generate independent session and ticketing secrets with at least 32 random bytes. Production requests fail closed when the session secret or document-storage credentials are missing.
+
+## Verification
+
+```bash
+npm test
+npm run typecheck
+npm run lint
+npm run build
+```
+
+## Local development
 
 ## Getting Started
 
