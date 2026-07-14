@@ -3,6 +3,7 @@ import type { Database, Ticket, TicketingIntegration } from "./domain";
 import { decryptSecret } from "./security";
 import { mutateDatabase, readDatabase } from "./store";
 import { validateOutboundEndpoint } from "./ticketing";
+import { createCandidateFromResolvedTicket } from "./knowledge-improvement";
 
 type WebhookAuth = { token?: string; username?: string; password?: string };
 export type ExternalStatusUpdate = { externalTicketId: string; status: string; raw: unknown };
@@ -11,6 +12,7 @@ function valueAtPath(value: unknown, path: string): unknown { return path.split(
 export function applyExternalStatus(database: Database, tenantId: string, update: ExternalStatusUpdate, source: "STATUS_PULL" | "STATUS_WEBHOOK", now = new Date().toISOString()) {
   const ticket = database.tickets.find((item) => item.tenantId === tenantId && item.externalTicketId === update.externalTicketId); if (!ticket) throw new Error("Ticket not found.");
   const previous = ticket.externalStatus ?? null; ticket.externalStatus = update.status; ticket.lastStatusSyncedAt = now; ticket.updatedAt = now;
+  createCandidateFromResolvedTicket(database, tenantId, ticket.id, now);
   database.ticketSyncLogs.push({ id: randomUUID(), tenantId, ticketId: ticket.id, integrationId: ticket.integrationId, action: source, requestPayload: { externalTicketId: update.externalTicketId }, responsePayload: update.raw, status: "SUCCESS", errorMessage: null, createdAt: now });
   return { ticket, changed: previous !== update.status, previousStatus: previous };
 }

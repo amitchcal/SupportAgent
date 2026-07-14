@@ -11,7 +11,7 @@ function client() {
 
 export function postgresConfigured() { return Boolean(process.env.DATABASE_URL?.startsWith("postgres")); }
 const json = (database: Database) => JSON.parse(JSON.stringify(database)) as Prisma.InputJsonValue;
-function normalize(database: Database): Database { database.tenants??=[]; database.users??=[]; database.auditLogs??=[]; database.conversations??=[]; database.conversationMessages??=[]; database.conversationFeedback??=[]; database.knowledgeDocuments??=[]; database.knowledgeVersions??=[]; database.knowledgeGaps??=[]; database.industryTemplates??=[]; database.rateLimits??=[]; database.sopDefinitions??=[]; database.sopExecutions??=[]; database.ticketingIntegrations??=[]; database.tickets??=[]; database.ticketSyncLogs??=[]; return database; }
+function normalize(database: Database): Database { database.tenants??=[]; database.users??=[]; database.auditLogs??=[]; database.conversations??=[]; database.conversationMessages??=[]; database.conversationFeedback??=[]; database.knowledgeDocuments??=[]; database.knowledgeVersions??=[]; database.knowledgeGaps??=[]; database.knowledgeCandidates??=[]; database.industryTemplates??=[]; database.rateLimits??=[]; database.sopDefinitions??=[]; database.sopExecutions??=[]; database.ticketingIntegrations??=[]; database.tickets??=[]; database.ticketSyncLogs??=[]; return database; }
 
 export async function readPostgresState(seed: () => Database): Promise<Database> {
   const record = await client().supportState.upsert({ where: { id: "primary" }, update: {}, create: { id: "primary", data: json(seed()) } });

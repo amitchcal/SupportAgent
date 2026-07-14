@@ -31,6 +31,10 @@ Integration administrators configure provider polling at `/admin/ticket-sync` wi
 
 Providers can push status changes to `POST /api/ticketing/status`. Send JSON containing `tenantId`, `externalTicketId`, and `status`, and set `x-support-signature` to the hexadecimal HMAC-SHA256 of the exact request body using `TICKETING_WEBHOOK_SECRET`. Incoming status changes update ticket metadata but never mark the support conversation resolved without user confirmation.
 
+## Resolved-ticket knowledge candidates
+
+When an external ticket reaches a resolved, closed, completed, done or fixed status, the application creates one tenant-scoped KB candidate. Knowledge Managers review candidates at `/admin/kb-candidates`. Converting a candidate creates a source-linked draft document that is still excluded from live retrieval until its version is separately approved through the existing knowledge lifecycle. Candidate content excludes requester details and raw conversation transcripts.
+
 ## Local development
 
 ## Getting Started
