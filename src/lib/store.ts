@@ -13,13 +13,15 @@ function seed(): Database {
   return {
     tenants: [{ id: tenantId, name: "Acme Industrial", slug: "acme", status: "ACTIVE", settings: defaultSettings, branding: defaultBranding, theme: defaultTheme, createdAt: now, updatedAt: now }],
     users: [],
-    auditLogs: [],
+    auditLogs: [], conversations: [], conversationMessages: [],
   };
 }
 
 async function load(): Promise<Database> {
   try {
-    return JSON.parse(await readFile(databasePath, "utf8")) as Database;
+    const database = JSON.parse(await readFile(databasePath, "utf8")) as Database;
+    database.conversations ??= []; database.conversationMessages ??= [];
+    return database;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     const initial = seed();
@@ -66,6 +68,10 @@ export async function listTenantUsers(tenantId: string) {
 
 export async function listTenantAuditLogs(tenantId: string) {
   return (await load()).auditLogs.filter((entry) => entry.tenantId === tenantId).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function getTenantConversation(tenantId: string, conversationId: string) {
+  return (await load()).conversations.find((item) => item.id === conversationId && item.tenantId === tenantId) ?? null;
 }
 
 export function withoutPassword(user: User): Omit<User, "passwordHash"> {

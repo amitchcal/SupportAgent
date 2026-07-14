@@ -86,7 +86,15 @@ export type AuditLog = {
   createdAt: string;
 };
 
-export type Database = { tenants: Tenant[]; users: User[]; auditLogs: AuditLog[] };
+export type SupportedLanguage = "en" | "hi" | "hinglish";
+export type IssueCategory = "Mechanical" | "Electrical" | "Instrumentation" | "PLC/Automation" | "Hydraulic" | "Pneumatic" | "Calibration" | "Installation" | "Warranty" | "Spare Parts" | "Documentation" | "Preventive Maintenance" | "Safety" | "Other";
+export type Classification = { category: IssueCategory; severity: "low" | "medium" | "high" | "critical"; urgency: "routine" | "soon" | "urgent" | "immediate"; confidence: number };
+export type IssueDetails = { summary: string; asset: string; model: string; serialNumber: string; errorCode: string; site: string; severityClues: string[]; missingQuestions: string[] };
+export type ConversationStatus = "AWAITING_CLARIFICATION" | "AWAITING_CONFIRMATION" | "ESCALATED";
+export type Conversation = { id: string; tenantId: string; language: SupportedLanguage; contact: Record<string, string>; issue: IssueDetails; classification: Classification; safetyReasons: string[]; lowConfidenceReason: string | null; clarificationCount: number; status: ConversationStatus; createdAt: string; updatedAt: string };
+export type ConversationMessage = { id: string; tenantId: string; conversationId: string; role: "USER" | "ASSISTANT" | "SYSTEM"; content: string; createdAt: string };
+
+export type Database = { tenants: Tenant[]; users: User[]; auditLogs: AuditLog[]; conversations: Conversation[]; conversationMessages: ConversationMessage[] };
 
 export const defaultTheme: TenantTheme = {
   mode: "light",
