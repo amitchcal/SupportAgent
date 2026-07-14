@@ -18,7 +18,7 @@ test("SOP validation orders steps and forces safety warnings to mandatory", () =
 });
 
 test("only active SOPs from the same tenant can be selected or executed", () => {
-  const database = { tenants: [], users: [], auditLogs: [], conversations: [], conversationMessages: [], knowledgeDocuments: [], knowledgeVersions: [], sopDefinitions: [sop, { ...sop, id: "draft", status: "DRAFT" as const }], sopExecutions: [], ticketingIntegrations: [], tickets: [], ticketSyncLogs: [] } satisfies Database;
+  const database = { tenants: [], users: [], auditLogs: [], conversations: [], conversationMessages: [], conversationFeedback: [], knowledgeDocuments: [], knowledgeVersions: [], sopDefinitions: [sop, { ...sop, id: "draft", status: "DRAFT" as const }], sopExecutions: [], ticketingIntegrations: [], tickets: [], ticketSyncLogs: [] } satisfies Database;
   assert.equal(findActiveSop(database, "tenant-a", "Electrical", "en")?.id, "sop-a");
   assert.equal(findActiveSop(database, "tenant-b", "Electrical", "en"), null);
   assert.throws(() => startSopExecution(sop, "tenant-b", "c1"), /active tenant SOP/);

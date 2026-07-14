@@ -6,7 +6,7 @@ import { buildNormalizedTicket, CustomWebhookAdapter, deliverTicket, mapTicketPa
 
 const now = new Date(0).toISOString();
 const conversation: Conversation = { id: "c1", tenantId: "t1", language: "en", contact: { name: "Amit", email: "amit@example.com" }, issue: { summary: "Motor alarm E-42", asset: "M-7", model: "AX", serialNumber: "SN9", errorCode: "E-42", site: "Pune", severityClues: [], missingQuestions: [] }, classification: { category: "Electrical", severity: "medium", urgency: "soon", confidence: .9 }, safetyReasons: [], lowConfidenceReason: null, clarificationCount: 0, status: "ESCALATED", createdAt: now, updatedAt: now };
-const database = { tenants: [], users: [], auditLogs: [], conversations: [conversation], conversationMessages: [{ id: "m1", tenantId: "t1", conversationId: "c1", role: "USER" as const, content: "Motor alarm E-42", createdAt: now }], knowledgeDocuments: [], knowledgeVersions: [], sopDefinitions: [], sopExecutions: [], ticketingIntegrations: [], tickets: [], ticketSyncLogs: [] } satisfies Database;
+const database = { tenants: [], users: [], auditLogs: [], conversations: [conversation], conversationMessages: [{ id: "m1", tenantId: "t1", conversationId: "c1", role: "USER" as const, content: "Motor alarm E-42", createdAt: now }], conversationFeedback: [], knowledgeDocuments: [], knowledgeVersions: [], sopDefinitions: [], sopExecutions: [], ticketingIntegrations: [], tickets: [], ticketSyncLogs: [] } satisfies Database;
 
 test("normalized ticket contains requester, asset, issue, troubleshooting, attachments, and transcript", () => {
   const payload = buildNormalizedTicket(database, "t1", "c1");
