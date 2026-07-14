@@ -78,3 +78,6 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 ### C4 full language expansion
 
 Tenants can enable English, Hindi, Hinglish, German, French, Spanish, Chinese/Mandarin, and Japanese at `/admin/languages`. The language adapter stores original and English-translated content separately, protects technical identifiers, and supplies bilingual ticket summaries. Configure `TRANSLATION_API_URL` and optional `TRANSLATION_API_KEY` in Vercel for production free-form translation. The endpoint must accept `{ text, source, target, preservedTerms }` and return `{ translation }` or `{ translatedText }`.
+### C6 WhatsApp channel
+
+The Meta WhatsApp Cloud API webhook is `/api/messaging/whatsapp`. It verifies Meta webhook signatures, maps each Meta phone-number ID to a tenant, ignores duplicate message IDs, passes text into the same safety/classification/ticket workflow as web chat, and sends the branded response through Meta. Configure the five `WHATSAPP_*` variables shown in `.env.example`; never expose the app secret or access token to the browser.
