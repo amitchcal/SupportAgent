@@ -19,6 +19,8 @@ npm run lint
 npm run build
 ```
 
+`npm run build` always runs `npm run test:regression` first. A failed regression blocks local builds, Vercel builds, and the GitHub push/pull-request workflow. The regression suite covers tenant isolation, approved-only knowledge retrieval, safety escalation, SOP enforcement, ticket adapters, feedback, reporting, authentication security, rate limiting, and outbound integration protection.
+
 ## Local development
 
 ## Getting Started
