@@ -13,14 +13,14 @@ function seed(): Database {
   return {
     tenants: [{ id: tenantId, name: "Acme Industrial", slug: "acme", status: "ACTIVE", settings: defaultSettings, branding: defaultBranding, theme: defaultTheme, createdAt: now, updatedAt: now }],
     users: [],
-    auditLogs: [], conversations: [], conversationMessages: [], knowledgeDocuments: [], knowledgeVersions: [],
+    auditLogs: [], conversations: [], conversationMessages: [], knowledgeDocuments: [], knowledgeVersions: [], sopDefinitions: [], sopExecutions: [],
   };
 }
 
 async function load(): Promise<Database> {
   try {
     const database = JSON.parse(await readFile(databasePath, "utf8")) as Database;
-    database.conversations ??= []; database.conversationMessages ??= []; database.knowledgeDocuments ??= []; database.knowledgeVersions ??= [];
+    database.conversations ??= []; database.conversationMessages ??= []; database.knowledgeDocuments ??= []; database.knowledgeVersions ??= []; database.sopDefinitions ??= []; database.sopExecutions ??= [];
     return database;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -77,6 +77,10 @@ export async function getTenantConversation(tenantId: string, conversationId: st
 export async function listTenantKnowledge(tenantId: string) {
   const database = await load();
   return database.knowledgeDocuments.filter((item) => item.tenantId === tenantId).map((document) => ({ document, versions: database.knowledgeVersions.filter((version) => version.tenantId === tenantId && version.documentId === document.id).sort((a, b) => b.version - a.version) }));
+}
+
+export async function listTenantSops(tenantId: string) {
+  return (await load()).sopDefinitions.filter((item) => item.tenantId === tenantId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 export function withoutPassword(user: User): Omit<User, "passwordHash"> {

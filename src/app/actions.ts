@@ -4,13 +4,14 @@ import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import type { BorderRadius, Role, TenantTheme, ThemeMode } from "@/lib/domain";
+import type { BorderRadius, IssueCategory, Role, SupportedLanguage, TenantTheme, ThemeMode } from "@/lib/domain";
 import { getCurrentUser, requireUser, SESSION_COOKIE } from "@/lib/auth";
 import { assertCan, scopeTenant } from "@/lib/rbac";
 import { createSessionToken, hashPassword, verifyPassword } from "@/lib/security";
 import { audit, createTenantRecord, findUserByEmail, mutateDatabase } from "@/lib/store";
 import { sanitizeTheme } from "@/lib/theme";
 import { persistKnowledgeFile } from "@/lib/knowledge";
+import { validateSopSteps } from "@/lib/sop";
 
 const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 
@@ -152,5 +153,19 @@ export async function approveKnowledgeVersion(form: FormData) {
 export async function archiveKnowledgeDocument(form: FormData) {
   const actor = await requireUser(); assertCan(actor.role, "knowledge:manage"); const documentId = text(form, "documentId");
   await mutateDatabase((database) => { const document = database.knowledgeDocuments.find((item) => item.id === documentId); if (!document) throw new Error("Document not found."); const tenantId = scopeTenant(actor.role, actor.tenantId, document.tenantId); const oldValue = { status: document.status }; document.status = "ARCHIVED"; document.updatedAt = new Date().toISOString(); database.knowledgeVersions.filter((item) => item.documentId === document.id && item.tenantId === tenantId).forEach((item) => { item.status = "ARCHIVED"; }); audit(database, { tenantId, actorUserId: actor.id, action: "knowledge.document.archived", entityType: "knowledge_document", entityId: document.id, oldValue, newValue: { status: document.status } }); });
+  revalidatePath("/admin");
+}
+
+export async function createSop(form: FormData) {
+  const actor = await requireUser(); assertCan(actor.role, "sops:manage"); const tenantId = scopeTenant(actor.role, actor.tenantId, text(form, "tenantId") || undefined);
+  const title = text(form, "title"); const category = text(form, "category") as IssueCategory; const language = text(form, "language") as SupportedLanguage; const validCategories = new Set<IssueCategory>(["Mechanical","Electrical","Instrumentation","PLC/Automation","Hydraulic","Pneumatic","Calibration","Installation","Warranty","Spare Parts","Documentation","Preventive Maintenance","Safety","Other"]); if (!title || !validCategories.has(category) || !(["en","hi","hinglish"] as string[]).includes(language)) throw new Error("Provide a title, supported category, and language.");
+  let rawSteps: unknown; try { rawSteps = JSON.parse(text(form, "steps")); } catch { throw new Error("SOP steps must be valid JSON."); } const steps = validateSopSteps(rawSteps); const now = new Date().toISOString();
+  await mutateDatabase((database) => { const sop = { id: randomUUID(), tenantId, title, category, product: text(form, "product"), language, status: "DRAFT" as const, version: 1, steps, createdBy: actor.id, approvedBy: null, createdAt: now, updatedAt: now, approvedAt: null }; database.sopDefinitions.push(sop); audit(database, { tenantId, actorUserId: actor.id, action: "sop.created", entityType: "sop", entityId: sop.id, oldValue: null, newValue: sop }); });
+  revalidatePath("/admin");
+}
+
+export async function activateSop(form: FormData) {
+  const actor = await requireUser(); assertCan(actor.role, "sops:manage"); const sopId = text(form, "sopId");
+  await mutateDatabase((database) => { const sop = database.sopDefinitions.find((item) => item.id === sopId); if (!sop) throw new Error("SOP not found."); const tenantId = scopeTenant(actor.role, actor.tenantId, sop.tenantId); validateSopSteps(sop.steps); const oldValue = { status: sop.status }; database.sopDefinitions.filter((item) => item.tenantId === tenantId && item.category === sop.category && item.language === sop.language && item.product === sop.product && item.status === "ACTIVE").forEach((item) => { item.status = "ARCHIVED"; }); const now = new Date().toISOString(); sop.status = "ACTIVE"; sop.approvedBy = actor.id; sop.approvedAt = now; sop.updatedAt = now; audit(database, { tenantId, actorUserId: actor.id, action: "sop.activated", entityType: "sop", entityId: sop.id, oldValue, newValue: { status: sop.status, approvedBy: actor.id } }); });
   revalidatePath("/admin");
 }

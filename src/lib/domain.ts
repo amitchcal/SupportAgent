@@ -90,14 +90,20 @@ export type SupportedLanguage = "en" | "hi" | "hinglish";
 export type IssueCategory = "Mechanical" | "Electrical" | "Instrumentation" | "PLC/Automation" | "Hydraulic" | "Pneumatic" | "Calibration" | "Installation" | "Warranty" | "Spare Parts" | "Documentation" | "Preventive Maintenance" | "Safety" | "Other";
 export type Classification = { category: IssueCategory; severity: "low" | "medium" | "high" | "critical"; urgency: "routine" | "soon" | "urgent" | "immediate"; confidence: number };
 export type IssueDetails = { summary: string; asset: string; model: string; serialNumber: string; errorCode: string; site: string; severityClues: string[]; missingQuestions: string[] };
-export type ConversationStatus = "AWAITING_CLARIFICATION" | "AWAITING_CONFIRMATION" | "ESCALATED";
+export type ConversationStatus = "AWAITING_CLARIFICATION" | "AWAITING_CONFIRMATION" | "SOP_IN_PROGRESS" | "RESOLVED" | "ESCALATED";
 export type Conversation = { id: string; tenantId: string; language: SupportedLanguage; contact: Record<string, string>; issue: IssueDetails; classification: Classification; safetyReasons: string[]; lowConfidenceReason: string | null; clarificationCount: number; status: ConversationStatus; createdAt: string; updatedAt: string };
 export type ConversationMessage = { id: string; tenantId: string; conversationId: string; role: "USER" | "ASSISTANT" | "SYSTEM"; content: string; createdAt: string };
 export type KnowledgeStatus = "DRAFT" | "ACTIVE" | "ARCHIVED" | "REJECTED";
 export type KnowledgeDocument = { id: string; tenantId: string; title: string; description: string; tags: string[]; status: KnowledgeStatus; currentVersionId: string | null; createdBy: string; createdAt: string; updatedAt: string };
 export type KnowledgeVersion = { id: string; tenantId: string; documentId: string; version: number; fileName: string; fileType: "pdf" | "docx" | "txt" | "md" | "html"; storagePath: string; checksum: string; status: KnowledgeStatus; chunks: string[]; createdBy: string; approvedBy: string | null; createdAt: string; approvedAt: string | null };
+export const sopStepTypes = ["ask_question", "instruction", "confirmation", "measurement", "upload_request", "branch", "safety_warning", "escalate", "resolve"] as const;
+export type SopStepType = (typeof sopStepTypes)[number];
+export type SopStep = { id: string; order: number; type: SopStepType; content: string; responseFormat: "text" | "boolean" | "number" | "file" | "choice"; mandatory: boolean; branches?: Array<{ equals: string; nextStepId: string }> };
+export type SopDefinition = { id: string; tenantId: string; title: string; category: IssueCategory; product: string; language: SupportedLanguage; status: "DRAFT" | "ACTIVE" | "ARCHIVED"; version: number; steps: SopStep[]; createdBy: string; approvedBy: string | null; createdAt: string; updatedAt: string; approvedAt: string | null };
+export type SopExecutionLog = { stepId: string | null; event: "STARTED" | "STEP_CONFIRMED" | "SAFETY_BLOCKED" | "ESCALATED" | "RESOLVED"; response: string; createdAt: string };
+export type SopExecution = { id: string; tenantId: string; conversationId: string; sopId: string; currentStepId: string | null; status: "IN_PROGRESS" | "RESOLVED" | "ESCALATED"; completedStepIds: string[]; logs: SopExecutionLog[]; createdAt: string; updatedAt: string };
 
-export type Database = { tenants: Tenant[]; users: User[]; auditLogs: AuditLog[]; conversations: Conversation[]; conversationMessages: ConversationMessage[]; knowledgeDocuments: KnowledgeDocument[]; knowledgeVersions: KnowledgeVersion[] };
+export type Database = { tenants: Tenant[]; users: User[]; auditLogs: AuditLog[]; conversations: Conversation[]; conversationMessages: ConversationMessage[]; knowledgeDocuments: KnowledgeDocument[]; knowledgeVersions: KnowledgeVersion[]; sopDefinitions: SopDefinition[]; sopExecutions: SopExecution[] };
 
 export const defaultTheme: TenantTheme = {
   mode: "light",

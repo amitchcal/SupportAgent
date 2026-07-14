@@ -5,15 +5,16 @@ export type Permission =
   | "settings:manage"
   | "users:manage"
   | "knowledge:manage"
+  | "sops:manage"
   | "integrations:manage"
   | "reports:read"
   | "conversations:read"
   | "audit:read";
 
 const grants: Record<Role, readonly Permission[]> = {
-  SUPER_ADMIN: ["tenants:manage", "settings:manage", "users:manage", "knowledge:manage", "integrations:manage", "reports:read", "conversations:read", "audit:read"],
-  TENANT_ADMIN: ["settings:manage", "users:manage", "knowledge:manage", "integrations:manage", "reports:read", "conversations:read", "audit:read"],
-  KNOWLEDGE_MANAGER: ["knowledge:manage"],
+  SUPER_ADMIN: ["tenants:manage", "settings:manage", "users:manage", "knowledge:manage", "sops:manage", "integrations:manage", "reports:read", "conversations:read", "audit:read"],
+  TENANT_ADMIN: ["settings:manage", "users:manage", "knowledge:manage", "sops:manage", "integrations:manage", "reports:read", "conversations:read", "audit:read"],
+  KNOWLEDGE_MANAGER: ["knowledge:manage", "sops:manage"],
   INTEGRATION_ADMIN: ["integrations:manage"],
   SUPPORT_SUPERVISOR: ["reports:read", "conversations:read"],
   VIEWER: ["reports:read", "conversations:read"],

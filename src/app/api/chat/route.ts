@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { classifyIssue, detectSafetyRisk, extractIssueDetails, responseFor } from "@/lib/classification";
-import type { Conversation, SupportedLanguage } from "@/lib/domain";
-import { findTenantBySlug, getTenantConversation, mutateDatabase } from "@/lib/store";
+import type { Conversation, SopStep, SupportedLanguage } from "@/lib/domain";
+import { findTenantBySlug, getTenantConversation, mutateDatabase, readDatabase } from "@/lib/store";
+import { advanceSopExecution, currentSopStep, findActiveSop, startSopExecution } from "@/lib/sop";
 
 const languages = new Set<SupportedLanguage>(["en", "hi", "hinglish"]);
 const cleanRecord = (value: unknown) => Object.fromEntries(Object.entries(value && typeof value === "object" ? value : {}).map(([key, item]) => [key, String(item ?? "").trim().slice(0, 300)]));
@@ -25,6 +26,24 @@ export async function POST(request: Request) {
     const conversation: Conversation = { id: conversationId, tenantId: tenant.id, language, contact, issue, classification, safetyReasons, lowConfidenceReason: result.lowConfidenceReason, clarificationCount: result.status === "AWAITING_CLARIFICATION" ? 1 : 0, status: result.status, createdAt: now, updatedAt: now };
     await mutateDatabase((database) => { database.conversations.push(conversation); database.conversationMessages.push({ id: randomUUID(), tenantId: tenant.id, conversationId, role: "USER", content: message, createdAt: now }, { id: randomUUID(), tenantId: tenant.id, conversationId, role: "ASSISTANT", content: result.content, createdAt: now }); });
     return Response.json({ conversationId, reply: result.content, status: result.status, classification, issue });
+  }
+
+  if (body.action === "start_sop") {
+    const conversationId = String(body.conversationId ?? ""); const conversation = await getTenantConversation(tenant.id, conversationId); if (!conversation) return Response.json({ error: "Conversation not found." }, { status: 404 });
+    if (conversation.status !== "AWAITING_CONFIRMATION") return Response.json({ error: "Issue summary is not awaiting confirmation." }, { status: 409 });
+    const database = await readDatabase(); const sop = findActiveSop(database, tenant.id, conversation.classification.category, conversation.language, conversation.issue.model || conversation.issue.asset); const emergencyReasons = detectSafetyRisk(message); const now = new Date().toISOString();
+    if (!sop) { const reply = "I cannot provide troubleshooting instructions because no approved active SOP matches this issue. The session has been escalated for human support."; await mutateDatabase((db) => { const item = db.conversations.find((entry) => entry.id === conversationId && entry.tenantId === tenant.id); if (item) { item.status = "ESCALATED"; item.updatedAt = now; } db.conversationMessages.push({ id: randomUUID(), tenantId: tenant.id, conversationId, role: "USER", content: message, createdAt: now }, { id: randomUUID(), tenantId: tenant.id, conversationId, role: "ASSISTANT", content: reply, createdAt: now }); }); return Response.json({ conversationId, reply, status: "ESCALATED" }); }
+    const execution = startSopExecution(sop, tenant.id, conversationId, emergencyReasons, now); const step = currentSopStep(execution, sop); const reply = execution.status === "ESCALATED" ? "A new emergency risk was detected. Stop troubleshooting and follow the site emergency procedure now. Human support has been alerted." : `Approved SOP: ${sop.title}\n\nStep 1 of ${sop.steps.length}: ${step?.content}`;
+    await mutateDatabase((db) => { db.sopExecutions.push(execution); const item = db.conversations.find((entry) => entry.id === conversationId && entry.tenantId === tenant.id); if (item) { item.status = execution.status === "ESCALATED" ? "ESCALATED" : "SOP_IN_PROGRESS"; item.updatedAt = now; } db.conversationMessages.push({ id: randomUUID(), tenantId: tenant.id, conversationId, role: "USER", content: message, createdAt: now }, { id: randomUUID(), tenantId: tenant.id, conversationId, role: "ASSISTANT", content: reply, createdAt: now }); });
+    return Response.json({ conversationId, reply, status: execution.status === "ESCALATED" ? "ESCALATED" : "SOP_IN_PROGRESS", sop: { id: sop.id, title: sop.title, version: sop.version }, step });
+  }
+
+  if (body.action === "sop_step") {
+    const conversationId = String(body.conversationId ?? ""); const database = await readDatabase(); const execution = database.sopExecutions.find((item) => item.tenantId === tenant.id && item.conversationId === conversationId && item.status === "IN_PROGRESS"); if (!execution) return Response.json({ error: "Active SOP execution not found." }, { status: 404 }); const sop = database.sopDefinitions.find((item) => item.id === execution.sopId && item.tenantId === tenant.id && item.status === "ACTIVE"); if (!sop) return Response.json({ error: "Approved SOP is no longer active; troubleshooting has stopped." }, { status: 409 });
+    const emergencyReasons = detectSafetyRisk(message); const now = new Date().toISOString(); let reply = ""; let status = "SOP_IN_PROGRESS"; let nextStep: SopStep | null = null;
+    try { advanceSopExecution(execution, sop, message, body.confirmed === true, emergencyReasons, now); nextStep = currentSopStep(execution, sop); if (execution.status === "ESCALATED") { status = "ESCALATED"; reply = emergencyReasons.length ? "Emergency override activated. Stop troubleshooting immediately and follow your site emergency procedure." : "The approved SOP requires escalation to human support."; } else if (execution.status === "RESOLVED") { status = "RESOLVED"; reply = "The approved SOP has reached its resolution step. Please confirm that the issue is actually resolved before this session is closed."; } else { const position = sop.steps.findIndex((item) => item.id === nextStep?.id) + 1; reply = `Step ${position} of ${sop.steps.length}: ${nextStep?.content}`; } } catch (error) { return Response.json({ error: error instanceof Error ? error.message : "Unable to advance SOP." }, { status: 400 }); }
+    await mutateDatabase((db) => { const stored = db.sopExecutions.find((item) => item.id === execution.id && item.tenantId === tenant.id); if (stored) Object.assign(stored, execution); const conversation = db.conversations.find((item) => item.id === conversationId && item.tenantId === tenant.id); if (conversation) { conversation.status = status as typeof conversation.status; conversation.updatedAt = now; } db.conversationMessages.push({ id: randomUUID(), tenantId: tenant.id, conversationId, role: "USER", content: message, createdAt: now }, { id: randomUUID(), tenantId: tenant.id, conversationId, role: "ASSISTANT", content: reply, createdAt: now }); });
+    return Response.json({ conversationId, reply, status, step: nextStep });
   }
 
   if (body.action === "reply") {
