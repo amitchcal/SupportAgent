@@ -10,6 +10,7 @@ import { assertCan, scopeTenant } from "@/lib/rbac";
 import { createSessionToken, hashPassword, verifyPassword } from "@/lib/security";
 import { audit, createTenantRecord, findUserByEmail, mutateDatabase } from "@/lib/store";
 import { sanitizeTheme } from "@/lib/theme";
+import { persistKnowledgeFile } from "@/lib/knowledge";
 
 const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 
@@ -124,3 +125,32 @@ export async function deactivateUser(form: FormData) {
 }
 
 export async function currentTenantId() { return (await getCurrentUser())?.tenantId ?? null; }
+
+export async function uploadKnowledgeDocument(form: FormData) {
+  const actor = await requireUser(); assertCan(actor.role, "knowledge:manage"); const tenantId = scopeTenant(actor.role, actor.tenantId, text(form, "tenantId") || undefined);
+  const file = form.get("file"); if (!(file instanceof File)) throw new Error("Choose a document to upload.");
+  const documentId = randomUUID(); const stored = await persistKnowledgeFile(tenantId, documentId, file); const now = new Date().toISOString();
+  await mutateDatabase((database) => { const versionId = randomUUID(); const document = { id: documentId, tenantId, title: text(form, "title") || file.name, description: text(form, "description"), tags: text(form, "tags").split(",").map((item) => item.trim()).filter(Boolean), status: "DRAFT" as const, currentVersionId: null, createdBy: actor.id, createdAt: now, updatedAt: now }; const version = { id: versionId, tenantId, documentId, version: 1, fileName: file.name, fileType: stored.type, storagePath: stored.storagePath, checksum: stored.checksum, status: "DRAFT" as const, chunks: stored.chunks, createdBy: actor.id, approvedBy: null, createdAt: now, approvedAt: null }; database.knowledgeDocuments.push(document); database.knowledgeVersions.push(version); audit(database, { tenantId, actorUserId: actor.id, action: "knowledge.document.uploaded", entityType: "knowledge_document", entityId: documentId, oldValue: null, newValue: { document, version: { ...version, storagePath: "[STORED]" } } }); });
+  revalidatePath("/admin");
+}
+
+export async function uploadKnowledgeVersion(form: FormData) {
+  const actor = await requireUser(); assertCan(actor.role, "knowledge:manage"); const documentId = text(form, "documentId"); const file = form.get("file"); if (!(file instanceof File)) throw new Error("Choose a document to upload.");
+  let tenantId = ""; let nextVersion = 1;
+  await mutateDatabase((database) => { const document = database.knowledgeDocuments.find((item) => item.id === documentId); if (!document) throw new Error("Document not found."); tenantId = scopeTenant(actor.role, actor.tenantId, document.tenantId); nextVersion = Math.max(0, ...database.knowledgeVersions.filter((item) => item.documentId === documentId && item.tenantId === tenantId).map((item) => item.version)) + 1; });
+  const stored = await persistKnowledgeFile(tenantId, documentId, file); const now = new Date().toISOString();
+  await mutateDatabase((database) => { const version = { id: randomUUID(), tenantId, documentId, version: nextVersion, fileName: file.name, fileType: stored.type, storagePath: stored.storagePath, checksum: stored.checksum, status: "DRAFT" as const, chunks: stored.chunks, createdBy: actor.id, approvedBy: null, createdAt: now, approvedAt: null }; database.knowledgeVersions.push(version); audit(database, { tenantId, actorUserId: actor.id, action: "knowledge.version.uploaded", entityType: "knowledge_version", entityId: version.id, oldValue: null, newValue: { ...version, storagePath: "[STORED]" } }); });
+  revalidatePath("/admin");
+}
+
+export async function approveKnowledgeVersion(form: FormData) {
+  const actor = await requireUser(); assertCan(actor.role, "knowledge:manage"); const versionId = text(form, "versionId");
+  await mutateDatabase((database) => { const version = database.knowledgeVersions.find((item) => item.id === versionId); if (!version) throw new Error("Version not found."); const tenantId = scopeTenant(actor.role, actor.tenantId, version.tenantId); const document = database.knowledgeDocuments.find((item) => item.id === version.documentId && item.tenantId === tenantId); if (!document) throw new Error("Document not found."); const oldValue = { documentStatus: document.status, currentVersionId: document.currentVersionId, versionStatus: version.status }; database.knowledgeVersions.filter((item) => item.documentId === document.id && item.tenantId === tenantId && item.status === "ACTIVE").forEach((item) => { item.status = "ARCHIVED"; }); const now = new Date().toISOString(); version.status = "ACTIVE"; version.approvedBy = actor.id; version.approvedAt = now; document.status = "ACTIVE"; document.currentVersionId = version.id; document.updatedAt = now; audit(database, { tenantId, actorUserId: actor.id, action: "knowledge.version.approved", entityType: "knowledge_version", entityId: version.id, oldValue, newValue: { documentStatus: document.status, currentVersionId: document.currentVersionId, versionStatus: version.status } }); });
+  revalidatePath("/admin");
+}
+
+export async function archiveKnowledgeDocument(form: FormData) {
+  const actor = await requireUser(); assertCan(actor.role, "knowledge:manage"); const documentId = text(form, "documentId");
+  await mutateDatabase((database) => { const document = database.knowledgeDocuments.find((item) => item.id === documentId); if (!document) throw new Error("Document not found."); const tenantId = scopeTenant(actor.role, actor.tenantId, document.tenantId); const oldValue = { status: document.status }; document.status = "ARCHIVED"; document.updatedAt = new Date().toISOString(); database.knowledgeVersions.filter((item) => item.documentId === document.id && item.tenantId === tenantId).forEach((item) => { item.status = "ARCHIVED"; }); audit(database, { tenantId, actorUserId: actor.id, action: "knowledge.document.archived", entityType: "knowledge_document", entityId: document.id, oldValue, newValue: { status: document.status } }); });
+  revalidatePath("/admin");
+}

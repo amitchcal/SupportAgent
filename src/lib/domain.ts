@@ -93,8 +93,11 @@ export type IssueDetails = { summary: string; asset: string; model: string; seri
 export type ConversationStatus = "AWAITING_CLARIFICATION" | "AWAITING_CONFIRMATION" | "ESCALATED";
 export type Conversation = { id: string; tenantId: string; language: SupportedLanguage; contact: Record<string, string>; issue: IssueDetails; classification: Classification; safetyReasons: string[]; lowConfidenceReason: string | null; clarificationCount: number; status: ConversationStatus; createdAt: string; updatedAt: string };
 export type ConversationMessage = { id: string; tenantId: string; conversationId: string; role: "USER" | "ASSISTANT" | "SYSTEM"; content: string; createdAt: string };
+export type KnowledgeStatus = "DRAFT" | "ACTIVE" | "ARCHIVED" | "REJECTED";
+export type KnowledgeDocument = { id: string; tenantId: string; title: string; description: string; tags: string[]; status: KnowledgeStatus; currentVersionId: string | null; createdBy: string; createdAt: string; updatedAt: string };
+export type KnowledgeVersion = { id: string; tenantId: string; documentId: string; version: number; fileName: string; fileType: "pdf" | "docx" | "txt" | "md" | "html"; storagePath: string; checksum: string; status: KnowledgeStatus; chunks: string[]; createdBy: string; approvedBy: string | null; createdAt: string; approvedAt: string | null };
 
-export type Database = { tenants: Tenant[]; users: User[]; auditLogs: AuditLog[]; conversations: Conversation[]; conversationMessages: ConversationMessage[] };
+export type Database = { tenants: Tenant[]; users: User[]; auditLogs: AuditLog[]; conversations: Conversation[]; conversationMessages: ConversationMessage[]; knowledgeDocuments: KnowledgeDocument[]; knowledgeVersions: KnowledgeVersion[] };
 
 export const defaultTheme: TenantTheme = {
   mode: "light",
