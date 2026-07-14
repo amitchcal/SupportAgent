@@ -7,11 +7,12 @@ import { revalidatePath } from "next/cache";
 import type { BorderRadius, IssueCategory, Role, SupportedLanguage, TenantTheme, ThemeMode } from "@/lib/domain";
 import { getCurrentUser, requireUser, SESSION_COOKIE } from "@/lib/auth";
 import { assertCan, scopeTenant } from "@/lib/rbac";
-import { createSessionToken, hashPassword, verifyPassword } from "@/lib/security";
-import { audit, createTenantRecord, findUserByEmail, mutateDatabase } from "@/lib/store";
+import { createSessionToken, encryptSecret, hashPassword, verifyPassword } from "@/lib/security";
+import { audit, createTenantRecord, findUserByEmail, mutateDatabase, readDatabase } from "@/lib/store";
 import { sanitizeTheme } from "@/lib/theme";
 import { persistKnowledgeFile } from "@/lib/knowledge";
 import { validateSopSteps } from "@/lib/sop";
+import { CustomWebhookAdapter } from "@/lib/ticketing";
 
 const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 
@@ -168,4 +169,17 @@ export async function activateSop(form: FormData) {
   const actor = await requireUser(); assertCan(actor.role, "sops:manage"); const sopId = text(form, "sopId");
   await mutateDatabase((database) => { const sop = database.sopDefinitions.find((item) => item.id === sopId); if (!sop) throw new Error("SOP not found."); const tenantId = scopeTenant(actor.role, actor.tenantId, sop.tenantId); validateSopSteps(sop.steps); const oldValue = { status: sop.status }; database.sopDefinitions.filter((item) => item.tenantId === tenantId && item.category === sop.category && item.language === sop.language && item.product === sop.product && item.status === "ACTIVE").forEach((item) => { item.status = "ARCHIVED"; }); const now = new Date().toISOString(); sop.status = "ACTIVE"; sop.approvedBy = actor.id; sop.approvedAt = now; sop.updatedAt = now; audit(database, { tenantId, actorUserId: actor.id, action: "sop.activated", entityType: "sop", entityId: sop.id, oldValue, newValue: { status: sop.status, approvedBy: actor.id } }); });
   revalidatePath("/admin");
+}
+
+function jsonObject(value: string, label: string) { try { const parsed = value ? JSON.parse(value) : {}; if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error(); return parsed as Record<string, string>; } catch { throw new Error(`${label} must be a valid JSON object.`); } }
+
+export async function saveWebhookIntegration(form: FormData) {
+  const actor = await requireUser(); assertCan(actor.role, "integrations:manage"); const tenantId = scopeTenant(actor.role, actor.tenantId, text(form, "tenantId") || undefined); const endpointUrl = text(form, "endpointUrl"); const url = new URL(endpointUrl); if (url.protocol !== "https:") throw new Error("Webhook endpoint must use HTTPS."); const headers = jsonObject(text(form, "headers"), "Headers"); const fieldMapping = jsonObject(text(form, "fieldMapping"), "Field mapping"); const authType = text(form, "authType") as "NONE" | "BEARER" | "BASIC"; if (!(["NONE","BEARER","BASIC"] as string[]).includes(authType)) throw new Error("Unsupported authentication type."); const auth = authType === "BEARER" ? { token: text(form, "token") } : authType === "BASIC" ? { username: text(form, "username"), password: text(form, "password") } : {}; const now = new Date().toISOString();
+  await mutateDatabase((database) => { database.ticketingIntegrations.filter((item) => item.tenantId === tenantId).forEach((item) => { item.isActive = false; }); const integration = { id: randomUUID(), tenantId, type: "CUSTOM_WEBHOOK" as const, name: text(form, "name") || "Custom webhook", endpointUrl, headers, authType, authConfigEncrypted: encryptSecret(auth), fieldMapping, isActive: true, lastTestedAt: null, lastTestStatus: null, createdBy: actor.id, createdAt: now, updatedAt: now }; database.ticketingIntegrations.push(integration); audit(database, { tenantId, actorUserId: actor.id, action: "ticketing.integration.updated", entityType: "ticketing_integration", entityId: integration.id, oldValue: null, newValue: { ...integration, authConfigEncrypted: "[REDACTED]", headers: Object.keys(headers) } }); });
+  revalidatePath("/admin");
+}
+
+export async function testWebhookIntegration(form: FormData) {
+  const actor = await requireUser(); assertCan(actor.role, "integrations:manage"); const integrationId = text(form, "integrationId"); const database = await readDatabase(); const integration = database.ticketingIntegrations.find((item) => item.id === integrationId); if (!integration) throw new Error("Integration not found."); const tenantId = scopeTenant(actor.role, actor.tenantId, integration.tenantId); let result: unknown = null; let error: string | null = null; try { result = await new CustomWebhookAdapter(integration).test(); } catch (reason) { error = reason instanceof Error ? reason.message : "Webhook test failed."; }
+  await mutateDatabase((current) => { const stored = current.ticketingIntegrations.find((item) => item.id === integrationId && item.tenantId === tenantId); if (stored) { stored.lastTestedAt = new Date().toISOString(); stored.lastTestStatus = error ? "FAILED" : "SUCCESS"; stored.updatedAt = new Date().toISOString(); } current.ticketSyncLogs.push({ id: randomUUID(), tenantId, ticketId: null, integrationId, action: "TEST", requestPayload: { event: "ticketing.test" }, responsePayload: result, status: error ? "FAILED" : "SUCCESS", errorMessage: error, createdAt: new Date().toISOString() }); }); revalidatePath("/admin");
 }

@@ -13,14 +13,14 @@ function seed(): Database {
   return {
     tenants: [{ id: tenantId, name: "Acme Industrial", slug: "acme", status: "ACTIVE", settings: defaultSettings, branding: defaultBranding, theme: defaultTheme, createdAt: now, updatedAt: now }],
     users: [],
-    auditLogs: [], conversations: [], conversationMessages: [], knowledgeDocuments: [], knowledgeVersions: [], sopDefinitions: [], sopExecutions: [],
+    auditLogs: [], conversations: [], conversationMessages: [], knowledgeDocuments: [], knowledgeVersions: [], sopDefinitions: [], sopExecutions: [], ticketingIntegrations: [], tickets: [], ticketSyncLogs: [],
   };
 }
 
 async function load(): Promise<Database> {
   try {
     const database = JSON.parse(await readFile(databasePath, "utf8")) as Database;
-    database.conversations ??= []; database.conversationMessages ??= []; database.knowledgeDocuments ??= []; database.knowledgeVersions ??= []; database.sopDefinitions ??= []; database.sopExecutions ??= [];
+    database.conversations ??= []; database.conversationMessages ??= []; database.knowledgeDocuments ??= []; database.knowledgeVersions ??= []; database.sopDefinitions ??= []; database.sopExecutions ??= []; database.ticketingIntegrations ??= []; database.tickets ??= []; database.ticketSyncLogs ??= [];
     return database;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -81,6 +81,10 @@ export async function listTenantKnowledge(tenantId: string) {
 
 export async function listTenantSops(tenantId: string) {
   return (await load()).sopDefinitions.filter((item) => item.tenantId === tenantId).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function getTenantTicketing(tenantId: string) {
+  const database = await load(); return { integrations: database.ticketingIntegrations.filter((item) => item.tenantId === tenantId), tickets: database.tickets.filter((item) => item.tenantId === tenantId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)), syncLogs: database.ticketSyncLogs.filter((item) => item.tenantId === tenantId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) };
 }
 
 export function withoutPassword(user: User): Omit<User, "passwordHash"> {
