@@ -15,6 +15,7 @@ import { validateSopSteps } from "@/lib/sop";
 import { CustomWebhookAdapter, ServiceNowAdapter, retryFailedTicket } from "@/lib/ticketing";
 import { reviewKnowledgeGap } from "@/lib/enterprise";
 import { anonymizedRateLimitKey, clearRateLimit, consumeRateLimit } from "@/lib/rate-limit";
+import { applyIndustryTemplate, createIndustryTemplate, validateIndustryTemplate } from "@/lib/industry";
 
 const text = (form: FormData, key: string) => String(form.get(key) ?? "").trim();
 
@@ -61,6 +62,28 @@ export async function createTenant(form: FormData) {
     audit(database, { tenantId: tenant.id, actorUserId: actor.id, action: "tenant.created", entityType: "tenant", entityId: tenant.id, oldValue: null, newValue: tenant });
   });
   revalidatePath("/admin");
+}
+
+export async function createIndustryTemplateAction(form: FormData) {
+  const actor = await requireUser(); assertCan(actor.role, "tenants:manage");
+  const severityRules = jsonObject(text(form, "severityRules"), "Severity rules") as Record<string, "low" | "medium" | "high" | "critical">;
+  const template = createIndustryTemplate({ name: text(form, "name"), description: text(form, "description"), issueCategories: form.getAll("issueCategories") as IssueCategory[], requiredFields: text(form, "requiredFields").split(",").map((item) => item.trim()).filter(Boolean), defaultSopTypes: text(form, "defaultSopTypes").split(",").map((item) => item.trim()).filter(Boolean), severityRules, escalationBehavior: text(form, "escalationBehavior") as "always" | "outside-hours" | "safety-and-low-confidence" }, actor.id);
+  await mutateDatabase((database) => { database.industryTemplates ??= []; if (database.industryTemplates.some((item) => item.name.toLowerCase() === template.name.toLowerCase() && item.status === "ACTIVE")) throw new Error("An active template with this name already exists."); database.industryTemplates.push(template); audit(database, { tenantId: null, actorUserId: actor.id, action: "industry_template.created", entityType: "industry_template", entityId: template.id, oldValue: null, newValue: template }); });
+  revalidatePath("/admin/industry-templates");
+}
+
+export async function applyIndustryTemplateAction(form: FormData) {
+  const actor = await requireUser(); assertCan(actor.role, "settings:manage");
+  const tenantId = scopeTenant(actor.role, actor.tenantId, text(form, "tenantId") || undefined); const templateId = text(form, "templateId");
+  await mutateDatabase((database) => { const tenant = database.tenants.find((item) => item.id === tenantId); if (!tenant) throw new Error("Tenant not found."); const oldValue = tenant.settings; applyIndustryTemplate(database, tenantId, templateId); audit(database, { tenantId, actorUserId: actor.id, action: "industry_template.applied", entityType: "tenant", entityId: tenantId, oldValue, newValue: tenant.settings }); });
+  revalidatePath("/admin"); revalidatePath("/admin/industry-templates");
+}
+
+export async function customizeIndustryTemplateAction(form: FormData) {
+  const actor = await requireUser(); assertCan(actor.role, "settings:manage");
+  const tenantId = scopeTenant(actor.role, actor.tenantId, text(form, "tenantId") || undefined); const severityRules = jsonObject(text(form, "severityRules"), "Severity rules") as Record<string, "low" | "medium" | "high" | "critical">; const issueCategories = form.getAll("issueCategories") as IssueCategory[]; const requiredFields = text(form, "requiredFields").split(",").map((item) => item.trim()).filter(Boolean); const defaultSopTypes = text(form, "defaultSopTypes").split(",").map((item) => item.trim()).filter(Boolean);
+  await mutateDatabase((database) => { const tenant = database.tenants.find((item) => item.id === tenantId); if (!tenant) throw new Error("Tenant not found."); validateIndustryTemplate({ name: "Tenant customization", description: "", issueCategories, requiredFields, defaultSopTypes, severityRules, escalationBehavior: tenant.settings.escalationBehavior }); const oldValue = tenant.settings; tenant.settings = { ...tenant.settings, issueCategories, requiredSupportFields: requiredFields, defaultSopTypes, severityRules }; tenant.updatedAt = new Date().toISOString(); audit(database, { tenantId, actorUserId: actor.id, action: "industry_template.customized", entityType: "tenant", entityId: tenantId, oldValue, newValue: tenant.settings }); });
+  revalidatePath("/admin/industry-templates");
 }
 
 export async function updateSettings(form: FormData) {

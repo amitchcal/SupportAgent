@@ -21,6 +21,10 @@ npm run build
 
 `npm run build` always runs `npm run test:regression` first. A failed regression blocks local builds, Vercel builds, and the GitHub push/pull-request workflow. The regression suite covers tenant isolation, approved-only knowledge retrieval, safety escalation, SOP enforcement, ticket adapters, feedback, reporting, authentication security, rate limiting, and outbound integration protection.
 
+## Industry templates
+
+Platform owners can create reusable industry templates at `/admin/industry-templates`. A template contains issue categories, required support fields, default SOP types, severity rules and escalation behavior. Applying a template copies those defaults into a tenant, where authorized tenant administrators can customize them without changing the source template or another tenant.
+
 ## Local development
 
 ## Getting Started

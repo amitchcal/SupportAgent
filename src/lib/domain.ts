@@ -48,6 +48,10 @@ export type TenantSettings = {
   requiredSupportFields: string[];
   escalationBehavior: "always" | "outside-hours" | "safety-and-low-confidence";
   confidenceThreshold: number;
+  industryTemplateId?: string | null;
+  issueCategories?: IssueCategory[];
+  defaultSopTypes?: string[];
+  severityRules?: Record<string, "low" | "medium" | "high" | "critical">;
 };
 
 export type Tenant = {
@@ -109,9 +113,10 @@ export type TicketingIntegration = { id: string; tenantId: string; type: "CUSTOM
 export type Ticket = { id: string; reference: string; tenantId: string; conversationId: string; integrationId: string | null; status: "PENDING_CREATION" | "CREATED" | "CREATION_FAILED" | "DEAD_LETTER"; externalTicketId: string | null; externalTicketUrl: string | null; normalizedPayload: NormalizedTicketPayload; creationAttempts: number; lastError: string | null; createdAt: string; updatedAt: string };
 export type TicketSyncLog = { id: string; tenantId: string; ticketId: string | null; integrationId: string | null; action: "TEST" | "CREATE"; requestPayload: unknown; responsePayload: unknown; status: "SUCCESS" | "FAILED"; errorMessage: string | null; createdAt: string };
 export type KnowledgeGap = { id: string; tenantId: string; category: IssueCategory; normalizedSummary: string; conversationIds: string[]; reasons: string[]; status: "OPEN" | "REVIEWED"; reviewedBy: string | null; createdAt: string; updatedAt: string };
+export type IndustryTemplate = { id: string; name: string; description: string; issueCategories: IssueCategory[]; requiredFields: string[]; defaultSopTypes: string[]; severityRules: Record<string, "low" | "medium" | "high" | "critical">; escalationBehavior: TenantSettings["escalationBehavior"]; status: "ACTIVE" | "ARCHIVED"; createdBy: string; createdAt: string; updatedAt: string };
 
 export type RateLimitEntry = { key: string; count: number; windowStartedAt: string };
-export type Database = { tenants: Tenant[]; users: User[]; auditLogs: AuditLog[]; conversations: Conversation[]; conversationMessages: ConversationMessage[]; conversationFeedback: ConversationFeedback[]; knowledgeDocuments: KnowledgeDocument[]; knowledgeVersions: KnowledgeVersion[]; knowledgeGaps?: KnowledgeGap[]; rateLimits?: RateLimitEntry[]; sopDefinitions: SopDefinition[]; sopExecutions: SopExecution[]; ticketingIntegrations: TicketingIntegration[]; tickets: Ticket[]; ticketSyncLogs: TicketSyncLog[] };
+export type Database = { tenants: Tenant[]; users: User[]; auditLogs: AuditLog[]; conversations: Conversation[]; conversationMessages: ConversationMessage[]; conversationFeedback: ConversationFeedback[]; knowledgeDocuments: KnowledgeDocument[]; knowledgeVersions: KnowledgeVersion[]; knowledgeGaps?: KnowledgeGap[]; industryTemplates?: IndustryTemplate[]; rateLimits?: RateLimitEntry[]; sopDefinitions: SopDefinition[]; sopExecutions: SopExecution[]; ticketingIntegrations: TicketingIntegration[]; tickets: Ticket[]; ticketSyncLogs: TicketSyncLog[] };
 
 export const defaultTheme: TenantTheme = {
   mode: "light",
